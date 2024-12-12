@@ -62,10 +62,20 @@ jobs:
       # 7. Elastic Beanstalk 배포
       - name: Deploy to Elastic Beanstalk
         run: |
-          aws elasticbeanstalk create-application-version --application-name ${{ secrets.EB_APP_NAME }} \
+          # 이전 버전 삭제
+          aws elasticbeanstalk delete-application-version \
+            --application-name ${{ secrets.EB_APP_NAME }} \
+            --version-label Sample \
+            --delete-source-bundle
+
+          # 새 버전 생성
+          aws elasticbeanstalk create-application-version \
+            --application-name ${{ secrets.EB_APP_NAME }} \
             --version-label ${{ github.sha }} \
             --source-bundle S3Bucket=jeonggu-kim-image-v-2,S3Key=deploy.zip
 
-          aws elasticbeanstalk update-environment --application-name ${{ secrets.EB_APP_NAME }} \
+          # 환경 업데이트
+          aws elasticbeanstalk update-environment \
+            --application-name ${{ secrets.EB_APP_NAME }} \
             --environment-name ${{ secrets.EB_ENV_NAME }} \
             --version-label ${{ github.sha }}
