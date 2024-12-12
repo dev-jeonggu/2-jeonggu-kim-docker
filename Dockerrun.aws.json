@@ -1,17 +1,12 @@
 {
-    "AWSEBDockerrunVersion": "3",
-    "containerDefinitions": [
+    "AWSEBDockerrunVersion": "1",
+    "Image": {
+        "Name": "920373009361.dkr.ecr.ap-northeast-2.amazonaws.com/jeonggu-community-v1:latest",
+        "Update": true
+    },
+    "Ports": [
         {
-            "name": "web",
-            "image": "920373009361.dkr.ecr.ap-northeast-2.amazonaws.com/jeonggu-community-v1:latest",
-            "essential": true,
-            "memory": 512,
-            "portMappings": [
-                {
-                    "hostPort": 3000,
-                    "containerPort": 3000
-                }
-            ]
+            "ContainerPort": 3000
         }
     ]
 }
