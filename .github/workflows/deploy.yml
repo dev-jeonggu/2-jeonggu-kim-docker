@@ -1,4 +1,4 @@
-name: Deploy to AWS ECR and Elastic Beanstalk
+name: Deploy to AWS ECR
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout 코드
+      # 1. 코드 체크아웃
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -22,60 +22,40 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 3. Amazon ECR 로그인
+      # 3. ECR 로그인
       - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # 4. Docker 이미지 빌드 및 ECR로 푸시
-      - name: Build and push Docker image to ECR
+      # 4. Docker 이미지 빌드 및 푸시
+      - name: Build and push Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPO_NAME }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: latest
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-      # 5. Dockerrun.aws.json 생성
-      - name: Create Dockerrun.aws.json
+      # 5. Elastic Beanstalk 배포를 위한 패키지 생성
+      - name: Prepare deployment package
         run: |
-          echo '{
-            "AWSEBDockerrunVersion": "1",
-            "Image": {
-              "Name": "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPO_NAME }}:${{ github.sha }}",
-              "Update": true
-            },
-            "Ports": [
-              {
-                "ContainerPort": 3000
-              }
-            ]
-          }' > Dockerrun.aws.json
-
-      # 6. ZIP 파일 생성 및 S3 업로드
-      - name: Create and upload ZIP file to S3
-        run: |
-          zip -r deploy.zip Dockerrun.aws.json
-          aws s3 cp deploy.zip s3://jeonggu-kim-image-v-2/deploy.zip
-
-      # 7. Elastic Beanstalk 배포
+          mkdir -p deploy
+          cp Dockerrun.aws.json deploy/Dockerrun.aws.json
+          sed -i "s|\${ECR_REGISTRY}|public.ecr.aws/n1b7r8u0|g" deploy/Dockerrun.aws.json
+          sed -i "s|\${ECR_REPOSITORY}|${{ secrets.ECR_REPO_NAME }}|g" deploy/Dockerrun.aws.json
+          sed -i "s|\${IMAGE_TAG}|${{ github.sha }}|g" deploy/Dockerrun.aws.json
+          cd deploy && zip -r deploy.zip .
+        
+      # 6. Elastic Beanstalk 배포
       - name: Deploy to Elastic Beanstalk
         run: |
-          # 이전 버전 삭제
-          aws elasticbeanstalk delete-application-version \
-            --application-name ${{ secrets.EB_APP_NAME }} \
-            --version-label Sample \
-            --delete-source-bundle
-
-          # 새 버전 생성
-          aws elasticbeanstalk create-application-version \
-            --application-name ${{ secrets.EB_APP_NAME }} \
+          zip -r deploy.zip Dockerrun.aws.json
+          aws s3 cp deploy.zip s3://elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ secrets.AWS_ACCOUNT_ID }}/deploy.zip
+          aws elasticbeanstalk create-application-version --application-name ${{ secrets.EB_APP_NAME }} \
             --version-label ${{ github.sha }} \
-            --source-bundle S3Bucket=jeonggu-kim-image-v-2,S3Key=deploy.zip
-
-          # 환경 업데이트
-          aws elasticbeanstalk update-environment \
-            --application-name ${{ secrets.EB_APP_NAME }} \
+            --source-bundle S3Bucket=elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ secrets.AWS_ACCOUNT_ID }},S3Key=deploy.zip
+          aws elasticbeanstalk update-environment --application-name ${{ secrets.EB_APP_NAME }} \
             --environment-name ${{ secrets.EB_ENV_NAME }} \
             --version-label ${{ github.sha }}
